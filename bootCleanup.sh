@@ -39,7 +39,7 @@ log_debug() {
 
 # Function for y/n confirmation
 confirm() {
-    if [[ "$ALWAYS-YES" != true ]]; then
+    if [[ "$ALWAYS_YES" != true ]]; then
         read -p "Continue? [y/N]: " response
     
         if [[ "${response,,}" != "y" && "${response,,}" != "yes" ]]; then
@@ -99,6 +99,9 @@ if [[ $EUID -ne 0 ]]; then
     log_error "Script has to be run as root"
 fi
 log_debug "User is root"
+
+BOOT_SPACE_BEFORE=$(df -h /boot | awk 'NR==2 {print $3}' | tr -d 'M')
+log_debug "Current /boot space (MiB): $BOOT_SPACE_BEFORE"
 
 
 
@@ -308,4 +311,7 @@ else
     fi
 fi
 
-log_info "/boot cleanup complete"
+BOOT_SPACE_AFTER=$(df -h /boot | awk 'NR==2 {print $3}' | tr -d 'M')
+log_debug "Current /boot space (MiB): $BOOT_SPACE_BEFORE"
+
+log_info "/boot cleanup complete ($(($BOOT_SPACE_BEFORE-$BOOT_SPACE_AFTER))MiB saved)"
