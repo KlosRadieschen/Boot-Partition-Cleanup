@@ -7,6 +7,8 @@ DESC=$(cat <<'EOF'
 #                                                                   #
 # Ein Script das /boot aufräumt mit den folgenden Schritten:        #
 # 1) Löscht alle alten kernels, bis auf 2                           #
+# 1) Löscht unbenötigte kernel dependencies                         #
+# 2) Löscht alte initramfs-rescue                                   #
 # 2) Löscht alte initramfs                                          #
 # 3) Checkt ob das neueste Kernel noch in den Grub Einträgen ist    #
 # 4) Wenn nicht, dann wird das neueste verfügbare Kernel gewählt    #
@@ -134,9 +136,9 @@ else
     log_debug "Entferne alte Kernel mit DNF"
     if [[ "$ALWAYS_YES" == true ]]; then
         if [[ "$VERBOSE" == true ]]; then
-            yum remove -y $(yum repoquery --installonly --latest-limit=-2 -q)
+            dnf rm -y $(dnf rq --installonly --latest-limit=-2 -q)
         else
-            yum remove -y $(yum repoquery --installonly --latest-limit=-2 -q) 1>/dev/null
+            dnf rm -y $(dnf rq --installonly --latest-limit=-2 -q) 1>/dev/null
         fi
     else
         echo "Momentane Kernels:"
@@ -145,9 +147,9 @@ else
         echo ""
         
         if [[ "$VERBOSE" == true ]]; then
-            yum -v remove $(yum repoquery --installonly --latest-limit=-2 -q)
+            dnf -v remove $(dnf rq --installonly --latest-limit=-2 -q)
         else
-            yum remove $(yum repoquery --installonly --latest-limit=-2 -q)
+            dnf remove $(dnf rq --installonly --latest-limit=-2 -q)
         fi
     fi
     
@@ -162,6 +164,30 @@ else
         log_error "DNF lief durch, aber keine Kernel entfernt"
     fi
 fi
+
+
+
+log_info "Lösche unbenötigte kernel dependencies"
+if [[ $KERNEL_NAME == "kernel-uek" ]]; then
+    if [[ "$ALWAYS_YES" != true ]]; then
+        echo ""
+        echo "Da dieses System das UEK hat, können manche Dependencies für das normale Kernel gelöscht werden"
+        echo ""
+        if [[ "$VERBOSE" == true ]]; then
+            dnf -v rm kernel
+        else
+            dnf rm kernel
+        fi
+    else 
+        log_debug "Lösche unbenötigte kernel dependencies mit dnf"
+        if [[ "$VERBOSE" == true ]]; then
+            dnf -vy rm kernel 1>/dev/null
+        else
+            dnf -y rm kernel 1>/dev/null
+        fi
+    fi
+fi
+log_info "Alle unbenötigten kernel dependencies gelöscht"
 
 
 
@@ -252,7 +278,7 @@ for file in "${TO_DELETE[@]}"; do
 done
 
 if [[ ${#TO_DELETE[@]} != 0 ]]; then
-    log_info "Alle redundanten initramfs gelöscht"
+    log_info "Alle überflüssigen initramfs gelöscht"
 fi
 
 
