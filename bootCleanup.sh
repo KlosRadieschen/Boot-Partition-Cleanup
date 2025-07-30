@@ -150,7 +150,7 @@ else
         fi
     fi
     
-    # Zähle Kernel nach dem Cleanup
+    # Count kernels after cleanup
     KERNEL_COUNT_AFTER=$(rpm -qa $KERNEL_NAME | wc -l)
     KERNEL_REMOVED_COUNT=$((KERNEL_COUNT_BEFORE - KERNEL_COUNT_AFTER))
     
