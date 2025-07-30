@@ -12,6 +12,7 @@ DESC=$(cat <<'EOF'
 # 4) Wenn nicht, dann wird das neueste verfügbare Kernel gewählt    #
 #####################################################################
 29.07.2025: Script erstellt
+30.07.2025: Fix für kernel und kernel-uek
 
 ---------------------------------------------------------------------
 EOF
@@ -22,7 +23,7 @@ set -eo pipefail
 # Logging Funktionen
 log_error() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')][ERROR]: $1" >&2  
-	exit 1
+    exit 1
 }
 
 log_info() {
@@ -39,13 +40,13 @@ log_debug() {
 
 # Funktion für y/n confirmation
 confirm() {
-	if [[ "$ALWAYS-YES" != true ]]; then
-		read -p "Fortfahren? [y/N]: " response
+    if [[ "$ALWAYS-YES" != true ]]; then
+        read -p "Fortfahren? [y/N]: " response
     
-		if [[ "${response,,}" != "y" && "${response,,}" != "yes" ]]; then
-			exit 1
-		fi
-	fi
+        if [[ "${response,,}" != "y" && "${response,,}" != "yes" ]]; then
+            exit 1
+        fi
+    fi
 }
 
 # Default flags
@@ -58,23 +59,23 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         -s|--silent)
             SILENT=true
-			ALWAYS_YES=true
+            ALWAYS_YES=true
             shift
             ;;
         -v|--verbose)
             VERBOSE=true
             shift
             ;;
-		-y|--yes)
+        -y|--yes)
             ALWAYS_YES=true
             shift
             ;;
         -h|--help)
             echo "Usage: $0 [flag]"
-			echo "  -y, --yes		Sagt bei jedem Prompt automatisch ja"
-            echo "  -s, --silent	Nur Error-Messages (impliziert -y)"
-            echo "  -v, --verbose	Alle Messages inkl. Debug"
-            echo "  -h, --help		Diese Hilfe"
+            echo "  -y, --yes         Sagt bei jedem Prompt automatisch ja"
+            echo "  -s, --silent      Nur Error-Messages (impliziert -y)"
+            echo "  -v, --verbose     Alle Messages inkl. Debug"
+            echo "  -h, --help        Diese Hilfe"
             exit 0
             ;;
         *)
@@ -92,7 +93,7 @@ fi
 
 # Print Description if not silent
 if [[ "$SILENT" != true ]]; then
-	echo "$DESC"
+    echo "$DESC"
 fi
 
 if [[ $EUID -ne 0 ]]; then
@@ -104,39 +105,57 @@ log_debug "User ist root"
 
 log_info "Kernel Cleanup"
 
-log_debug "Zähle Kernel vor dem Cleanup"
-KERNEL_COUNT_BEFORE=$(rpm -qa kernel | wc -l)
-log_debug "Kernel Count: $KERNEL_COUNT_BEFORE"
+log_debug "Versuche, Kernel zu finden"
+KERNEL_NAME=""
+
+KERNEL_COUNT_BEFORE=$(rpm -qa kernel-uek | wc -l)
+log_debug "UEK Kernel Count: $KERNEL_COUNT_BEFORE"
 
 if [[ $KERNEL_COUNT_BEFORE -le 0 ]]; then
-	log_error "Keine Kernels gefunden"
-elif [[ $KERNEL_COUNT_BEFORE -le 2 ]]; then
+    log_debug "UEK Kernel nicht gefunden"
+    
+    KERNEL_COUNT_BEFORE=$(rpm -qa kernel | wc -l)
+    log_debug "Kernel Count: $KERNEL_COUNT_BEFORE"
+    
+    if [[ $KERNEL_COUNT_BEFORE -le 0 ]]; then
+        log_debug "Es wurde kein Kernel gefunden"
+    fi
+    
+    KERNEL_NAME="kernel"
+else
+    KERNEL_NAME="kernel-uek"
+fi
+  
+log_debug "Kernel Name: $KERNEL_NAME"
+  
+if [[ $KERNEL_COUNT_BEFORE -le 2 ]]; then
     log_info "Nur $KERNEL_COUNT_BEFORE Kernel installiert – nichts zu entfernen"
 else
     log_debug "Entferne alte Kernel mit DNF"
     if [[ "$ALWAYS_YES" == true ]]; then
-		if [[ "$VERBOSE" == true ]]; then
-			dnf remove -y --oldinstallonly --setopt installonly_limit=2 kernel
-		else
-			dnf remove -y --oldinstallonly --setopt installonly_limit=2 kernel 1>/dev/null
-		fi
-	else
-		echo "Momentante Kernels:"
-		rpm -qa kernel
-		echo ""
-		
-		if [[ "$VERBOSE" == true ]]; then
-			dnf remove -v --oldinstallonly --setopt installonly_limit=2 kernel
-		else
-			dnf remove --oldinstallonly --setopt installonly_limit=2 kernel
-		fi
-	fi
+        if [[ "$VERBOSE" == true ]]; then
+            yum remove -y $(yum repoquery --installonly --latest-limit=-2 -q)
+        else
+            yum remove -y $(yum repoquery --installonly --latest-limit=-2 -q) 1>/dev/null
+        fi
+    else
+        echo "Momentane Kernels:"
+        log_debug "Showing kernels with name $KERNEL_NAME"
+        rpm -qa $KERNEL_NAME
+        echo ""
+        
+        if [[ "$VERBOSE" == true ]]; then
+            yum -v remove $(yum repoquery --installonly --latest-limit=-2 -q)
+        else
+            yum remove $(yum repoquery --installonly --latest-limit=-2 -q)
+        fi
+    fi
     
     # Zähle Kernel nach dem Cleanup
-    KERNEL_COUNT_AFTER=$(rpm -qa kernel | wc -l)
+    KERNEL_COUNT_AFTER=$(rpm -qa $KERNEL_NAME | wc -l)
     KERNEL_REMOVED_COUNT=$((KERNEL_COUNT_BEFORE - KERNEL_COUNT_AFTER))
     
-	log_debug "Checke ob DNF funktioniert hat"
+    log_debug "Checke ob DNF funktioniert hat"
     if [[ $KERNEL_REMOVED_COUNT -gt 0 ]]; then
         log_info "$KERNEL_REMOVED_COUNT Kernel wurden erfolgreich entfernt ($KERNEL_COUNT_BEFORE → $KERNEL_COUNT_AFTER)"
     else
@@ -151,34 +170,34 @@ INITRAMFS_RESCUE_COUNT_BEFORE=$(ls /boot/initramfs-0-rescue-* | wc -l)
 log_debug "Rescue initramfs: $INITRAMFS_RESCUE_COUNT_BEFORE"
 
 if [[ $INITRAMFS_RESCUE_COUNT_BEFORE -le 0 ]]; then
-	log_error "Keine Resuce initramfs gefunden"
+    log_error "Keine Resuce initramfs gefunden"
 elif [[ $INITRAMFS_RESCUE_COUNT_BEFORE -le 1 ]]; then
-	log_info "Nur 1 rescue initramfs vorhanden - nichts zu entfernen"
+    log_info "Nur 1 rescue initramfs vorhanden - nichts zu entfernen"
 else 
-	log_debug "Alte rescue initramfs werden gelöscht"
-	if [[ "$ALWAYS_YES" != true ]]; then
-		echo ""
-		echo "Momentante rescue initrams:"
-		ls -lt /boot/initramfs-0-rescue-*
-		
-		echo ""
-		echo "Zu löschende rescue initrams:"
-		ls -t /boot/initramfs-0-rescue-* | tail -n +2
-		
-		echo ""
-		confirm
-	fi
-		
-	if [[ "$VERBOSE" == true ]]; then
-		ls -t /boot/initramfs-0-rescue-* | tail -n +2 | xargs rm -v
-	else
-		ls -t /boot/initramfs-0-rescue-* | tail -n +2 | xargs rm
-	fi
-	
-	INITRAMFS_RESCUE_COUNT_AFTER=$(ls /boot/initramfs-0-rescue-* | wc -l)
+    log_debug "Alte rescue initramfs werden gelöscht"
+    if [[ "$ALWAYS_YES" != true ]]; then
+        echo ""
+        echo "Momentante rescue initrams:"
+        ls -lt /boot/initramfs-0-rescue-*
+        
+        echo ""
+        echo "Zu löschende rescue initrams:"
+        ls -t /boot/initramfs-0-rescue-* | tail -n +2
+        
+        echo ""
+        confirm
+    fi
+        
+    if [[ "$VERBOSE" == true ]]; then
+        ls -t /boot/initramfs-0-rescue-* | tail -n +2 | xargs rm -v
+    else
+        ls -t /boot/initramfs-0-rescue-* | tail -n +2 | xargs rm
+    fi
+    
+    INITRAMFS_RESCUE_COUNT_AFTER=$(ls /boot/initramfs-0-rescue-* | wc -l)
     INITRAMFS_RESCUE_REMOVED_COUNT=$((INITRAMFS_RESCUE_COUNT_BEFORE - INITRAMFS_RESCUE_COUNT_AFTER))
-	
-	log_debug "Checke ob Kommando funktioniert hat"
+    
+    log_debug "Checke ob Kommando funktioniert hat"
     if [[ $INITRAMFS_RESCUE_REMOVED_COUNT -gt 0 ]]; then
         log_info "$INITRAMFS_RESCUE_REMOVED_COUNT Rescue initramfs wurden erfolgreich entfernt ($INITRAMFS_RESCUE_COUNT_BEFORE → $INITRAMFS_RESCUE_COUNT_AFTER)"
     else
@@ -192,42 +211,44 @@ log_info "Lösche überflüssige initramfs"
 INITRAMFS_COUNT_BEFORE=$(find /boot -name "initramfs-*.img" ! -name "*rescue*" | wc -l)
 log_debug "initramfs: $INITRAMFS_COUNT_BEFORE"
 
-readarray -t kernels < <(rpm -qa kernel | sed 's/^kernel-//')
+readarray -t kernels < <(rpm -qa $KERNEL_NAME | sed "s/^$KERNEL_NAME-//")
 TO_DELETE=()
 
 for initramfsfile in /boot/initramfs-*; do
-	log_debug "Iteration für: $initramfsfile"
-	log_debug "Vegleich mit: /boot/initramfs-${kernels[0]}"
+    log_debug "Iteration für: $initramfsfile"
+    log_debug "Vegleich mit: /boot/initramfs-${kernels[0]}"
+    log_debug "Vegleich 2 mit: /boot/initramfs-${kernels[1]}"
 
     if [[ ! "$initramfsfile" =~ /boot/initramfs-${kernels[0]}* && ! "$initramfsfile" =~ /boot/initramfs-${kernels[1]}* && ! "$initramfsfile" =~ /boot/initramfs-0-* ]]; then
-		log_debug "$initramfsfile soll gelöscht werden"
-		TO_DELETE+=("$initramfsfile")
-	else
-		log_debug "$initramfsfile soll NICHT gelöscht werden"
-	fi
+        log_debug "$initramfsfile soll gelöscht werden"
+        TO_DELETE+=("$initramfsfile")
+    else
+        log_debug "$initramfsfile soll NICHT gelöscht werden"
+        log_debug "-----------------------------------------"
+    fi
 done
 
 if [[ ${#TO_DELETE[@]} == 0 ]]; then
     log_info "keine überflüssigen initramfs gefunden"
 elif [[ "$ALWAYS_YES" != true ]]; then
-	echo ""
-	echo "Momentane Initramfs:"
-	find /boot -name "initramfs-*.img" ! -name "*rescue*"
-	
-	echo ""
-	echo "Zu löschende (${#TO_DELETE[@]} initramfs):"
-	printf "%s\n" "${TO_DELETE[@]}"
-	
-	echo ""
-	confirm
+    echo ""
+    echo "Momentane Initramfs:"
+    find /boot -name "initramfs-*.img" ! -name "*rescue*"
+    
+    echo ""
+    echo "Zu löschende (${#TO_DELETE[@]} initramfs):"
+    printf "%s\n" "${TO_DELETE[@]}"
+    
+    echo ""
+    confirm
 fi
 
 for file in "${TO_DELETE[@]}"; do
-	if [[ "$VERBOSE" == true ]]; then
-		rm -v $file
-	else
-		rm $file
-	fi
+    if [[ "$VERBOSE" == true ]]; then
+        rm -v $file
+    else
+        rm $file
+    fi
 done
 
 if [[ ${#TO_DELETE[@]} != 0 ]]; then
@@ -245,23 +266,23 @@ log_debug "Grep Exit code: $GREP_RESULT"
 if [[ -n "$GREP_RESULT" ]]; then
     log_info "Entry existiert noch"
 else
-	log_info "Entry existiert nicht!"
-	
-	if [[ "$ALWAYS_YES" != true ]]; then
-		echo ""
-		echo "Das folgende Kernel wird als Default Entry gesetzt:"
-		echo ""
-		grubby --info=0
-		echo ""
-		confirm
-	fi
-	
-	grub2-set-default $(grubby --info=0 | sed -n 's/^id="\(.*\)"$/\1/p')
-	if [[ "$SILENT" == true ]]; then
-		grub2-mkconfig -o /boot/grub2/grub.cfg >/dev/null
-	else
-		grub2-mkconfig -o /boot/grub2/grub.cfg
-	fi
+    log_info "Entry existiert nicht!"
+    
+    if [[ "$ALWAYS_YES" != true ]]; then
+        echo ""
+        echo "Das folgende Kernel wird als Default Entry gesetzt:"
+        echo ""
+        grubby --info=0
+        echo ""
+        confirm
+    fi
+    
+    grub2-set-default $(grubby --info=0 | sed -n 's/^id="\(.*\)"$/\1/p')
+    if [[ "$SILENT" == true ]]; then
+        grub2-mkconfig -o /boot/grub2/grub.cfg >/dev/null
+    else
+        grub2-mkconfig -o /boot/grub2/grub.cfg
+    fi
 fi
 
 log_info "/boot cleanup abgeschlossen"
