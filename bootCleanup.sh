@@ -6,11 +6,11 @@ DESC=$(cat <<'EOF'
 #                                                                    #
 # A script that cleans /boot with the following steps:               #
 # 1) Remove all old kernels but 2                                    #
-# 1) Remove unused kernel dependencies (UEK)                         #
-# 2) Remove old initramfs-rescue                                     #
-# 2) Remove old initram-fs                                           #
-# 3) Check if one of the remaining kernels is the GRUB default entry #
-# 4) If not, automatically select the newest kernel                  #
+# 2) Remove unused kernel dependencies (UEK)                         #
+# 3) Remove old initramfs-rescue                                     #
+# 4) Remove old initram-fs                                           #
+# 5) Check if one of the remaining kernels is the GRUB default entry #
+# 6) If not, automatically select the newest kernel                  #
 ######################################################################
 
 ----------------------------------------------------------------------
