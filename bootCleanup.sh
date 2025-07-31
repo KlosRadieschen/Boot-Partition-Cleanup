@@ -185,10 +185,14 @@ log "INFO" "Removing unnecessary dependencies for UEK"
 if [[ $KERNEL_NAME == "kernel-uek" ]]; then
     log "DEBUG" "UEK detected, starting dependency removal confirmation"
     
-    confirm "Showing unnecessary dependencies with DNF" "dnf --assumeno rm kernel"
+    if [[ $LOGLEVEL == "SILENT" ]]; then
+        dnf -qy rm kernel >/dev/null
+    elif [[ $ALWAYS_YES == "true" ]]; then
+        dnf -y rm kernel
+    else
+        dnf rm kernel
+    fi
 
-    log "DEBUG" "Removal confirmed, starting DNF"
-    dnf -y rm kernel 1>/dev/null
     log "INFO" "All unnecessary dependencies removed"
 else
     log "INFO" "Kernel is not UEK - nothing to do"
